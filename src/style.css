@@ -1,0 +1,12 @@
+.links path {
+    stroke: #aaa;
+    fill: transparent;
+    stroke-width: 7px;
+    pointer-events: all;
+}
+
+.nodes circle {
+  pointer-events: all;
+  stroke: none;
+  stroke-width: 40px;
+}
