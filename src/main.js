@@ -1,5 +1,6 @@
-import * as d3 from 'd3';
-import "./style.css";
+import { test } from "./level1.js"
+
+console.log(test);
 
 var svg = d3.select("svg"),
     width = +svg.attr("width"),
@@ -7,6 +8,7 @@ var svg = d3.select("svg"),
 
 const floor = 5 * height / 6;
 const rootPosX = (2 * width) / 3;
+
 const graph = {
   "nodes": [
     {"id": 0, "fx": (width / 3), "fy": floor, "isRoot": true},
@@ -31,6 +33,7 @@ const graph = {
     {"id": 6, "source": 5, "target": 8},
     {"id": 7, "source": 6, "target": 9},
     {"id": 8, "source": 5, "target": 9},
+    {"id": 9, "source": 5, "target": 9},
     //{"source": 5, "target": 5}
   ]
 }
@@ -77,6 +80,7 @@ const simulation = d3.forceSimulation(graph.nodes)
 // Graph functions
 
 // BFS starting from source node Id
+//
 function bfs(G, sourceId){
   let st = [sourceId];
   let visNodes = [sourceId];
