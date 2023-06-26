@@ -1,6 +1,5 @@
-import { test } from "./level1.js"
-
-console.log(test);
+// import { level1 } from "./levels.js"
+import { bfs, chopEdge } from "./graph.js"
 
 var svg = d3.select("svg"),
     width = +svg.attr("width"),
@@ -9,7 +8,7 @@ var svg = d3.select("svg"),
 const floor = 5 * height / 6;
 const rootPosX = (2 * width) / 3;
 
-const graph = {
+const graph1 = {
   "nodes": [
     {"id": 0, "fx": (width / 3), "fy": floor, "isRoot": true},
     {"id": 1},
@@ -32,111 +31,90 @@ const graph = {
     {"id": 5, "source": 5, "target": 7},
     {"id": 6, "source": 5, "target": 8},
     {"id": 7, "source": 6, "target": 9},
-    {"id": 8, "source": 5, "target": 9},
-    {"id": 9, "source": 5, "target": 9},
+    {"id": 8, "source": 9, "target": 5},
+    {"id": 9, "source": 2, "target": 1},
+    {"id": 10, "source": 1, "target": 9},
+    {"id": 11, "source": 3, "target": 3},
     //{"source": 5, "target": 5}
   ]
 }
 
-const rootIds = graph.nodes
-                     .filter((e) => e.isRoot)
-                     .map((e) => e.id);
 
-let link = svg.append("g")
-            .attr("class", "links")
-            .selectAll("path")
-            .data(graph.links)
-            .enter().append("path")
-            .on("mouseover", edgeMouseOver)
-            .on("mouseout", edgeMouseOut)
-            .on("click", edgeClick)
+function runGame(G){
+  const rootIds = G.nodes.filter((e) => e.isRoot)
+                   .map((e) => e.id);
+  G.roots = rootIds;
+  let turn = 0;
+  let stateDiffs = [];
 
-let nodes = svg.append("g")
-            .attr("class", "nodes")
-            .selectAll("circle")
-            .data(graph.nodes)
-            .enter().append("circle")
-            .attr("r", 10)
+  let nextState = (diff) => {
+    turn += 1;
+    stateDiffs.push(diff);
+    G.links = G.links.filter((e) => !diff.linkIds.includes(e.id));
+    G.nodes= G.nodes.filter((n) => !diff.linkIds.includes(n.id));
+  }
+  runForceSim(G, nextState);
+}
 
-let unrootedNodes = nodes.filter(function(d) { return !d.isRoot });
-unrootedNodes.call(d3.drag()
-                     .on("start", dragStart)
-                     .on("drag", dragNode)
-                     .on("end", dragEnd));
+// runForceSim sets up d3 force-graph given graph
+function runForceSim(G, updateFunc){
+  let link = svg.append("g")
+              .attr("class", "links")
+              .selectAll("path")
+              .data(G.links)
+              .enter().append("path")
+              .on("mouseover", edgeMouseOverFunc(G))
+              .on("mouseout", edgeMouseOut)
+              .on("click", edgeClickFunc(G, updateFunc))
 
-const simulation = d3.forceSimulation(graph.nodes)
-                   .force("link",
-                          d3.forceLink(graph.links)
-                            .strength(0.25)
-                            .distance(function (d) {
-                              return d.hasOwnProperty("length") ? d.length : 80
-                            })
-                            .id(function(d) { return d.id; }))
-                   .force("charge", d3.forceManyBody()
-                                      .distanceMax(100))
-                   .on("tick", ticked);
+  let nodes = svg.append("g")
+              .attr("class", "nodes")
+              .selectAll("circle")
+              .data(G.nodes)
+              .enter().append("circle")
+              .attr("r", 10)
+
+  const simulation = d3.forceSimulation(G.nodes)
+                    .force("link",
+                            d3.forceLink(G.links)
+                              .strength(0.3)
+                              .distance(function (d) {
+                                return d.hasOwnProperty("length") ? d.length : 80
+                              })
+                              .id(function(d) { return d.id; }))
+                    .force("charge", d3.forceManyBody()
+                                        .distanceMax(100))
+                    .force("collide", d3.forceCollide(30))
+                    .on("tick", ticked);
+
+  let unrootedNodes = nodes.filter(function(d) { return !d.isRoot });
+  unrootedNodes.call(d3.drag()
+                      .on("start", dragStartFunc(simulation))
+                      .on("drag", dragNode)
+                      .on("end", dragEndFunc(simulation)));
+
+  function ticked() {
+    link.attr("d", linkPos);
+    nodes
+      .attr("cx", function(d) { return d.x; })
+      .attr("cy", function(d) { return d.y; });
+  }
+}
 
 // -----------------------------------------------------------------------------
-// Graph functions
 
-// BFS starting from source node Id
-//
-function bfs(G, sourceId){
-  let st = [sourceId];
-  let visNodes = [sourceId];
-  let visEdges = [];
-
-  while (st.length > 0) {
-    let u = st.pop();
-    let adjEdges = G.links.filter((e) => {
-      if (visEdges.includes(e.id)) return false;
-      return (e.target.id == u) || (e.source.id == u);
-    })
-    let adjNodes = adjEdges.map((e) => {
-      return (e.source.id == u)? e.target.id : e.source.id;
-    })
-
-    visEdges = visEdges.concat(
-      adjEdges.map((e) => e.id)
-    );
-    visNodes = visNodes.concat(adjNodes);
-    st = st.concat(adjNodes);
-  }
-  return {"nodeIds": visNodes, "linkIds": visEdges}
-}
-
-// chopEdge finds Ids of edges & nodes that will be
-// disconnected by removing the given edge from the graph
-function chopEdge(edge) {
-  let chopG = Object.assign({}, graph);
-  chopG.links = graph.links.filter((e) => e.id != edge.id)
-
-  let sourceBFS = bfs(chopG, edge.source.id);
-  let foundRoot = rootIds.some((r) => sourceBFS.nodeIds.includes(r));
-  if (!foundRoot) {
-    // the other terminal of the edge must be connected to a root
-    sourceBFS.linkIds.push(edge.id)
-    return sourceBFS;
-  }
-  // check if other side is connected to a root
-  let targetBFS = bfs(chopG, edge.target.id);
-  foundRoot = rootIds.some((r) => targetBFS.nodeIds.includes(r));
-  if (!foundRoot) {
-    targetBFS.linkIds.push(edge.id)
-    return targetBFS;
-  }
-  return {"linkIds": [edge.id], "nodeIds": []};
-}
 
 
 // -----------------------------------------------------------------------------
 // Event listeners
 
-function edgeMouseOver(event, d) {
-  let remove = chopEdge(d);
+function edgeMouseOverFunc(graph){
+  return (event, d) => {
+  let remove = chopEdge(graph,d);
   d3.selectAll(".links path")
     .filter((e) => remove.linkIds.includes(e.id))
     .style("stroke","red");
+  };
 }
 
 function edgeMouseOut(event, d) {
@@ -148,22 +126,45 @@ function notP(f) {
   return (x) => !f(x);
 }
 
-function edgeClick(event, d) {
-  let remove = chopEdge(d);
-  let rmEdgeP = (e) => remove.linkIds.includes(e.id);
-  let rmNodeP = (n) => remove.nodeIds.includes(n.id);
+function edgeClickFunc(graph, callback) {
+  return (event, d) => {
+    let remove = chopEdge(graph, d);
+    let rmEdgeP = (e) => remove.linkIds.includes(e.id);
+    let rmNodeP = (n) => remove.nodeIds.includes(n.id);
 
-  d3.selectAll(".links path")
-    .filter(rmEdgeP)
-    .remove();
-  d3.selectAll(".nodes circle")
-    .filter(rmNodeP)
-    .remove();
-  graph.links = graph.links.filter(notP(rmEdgeP));
-  graph.nodes = graph.nodes.filter(notP(rmNodeP));
+    d3.selectAll(".links path")
+      .filter(rmEdgeP)
+      .remove();
+    d3.selectAll(".nodes circle")
+      .filter(rmNodeP)
+      .remove();
+    callback(remove);
+  };
 }
 
 function linkPos(d) {
+  //Self edge.
+  let x1 = d.source.x;
+  let x2 = d.target.x;
+  let y1 = d.source.y;
+  let y2 = d.target.y;
+
+  if (d.source.id == d.target.id) {
+      let xRotation = 90;
+      let largeArc = 1;
+      let sweep = 1;
+      let drx = 30;
+      let dry = 25;
+
+      // For whatever reason the arc collapses to a point if the beginning
+      // and ending points of the arc are the same, so kludge it.
+      x2 = x2 + 1;
+      y2 = y2 + 1;
+
+      return `M${x1},${y1}` +
+      `A${drx},${dry} ${xRotation},${largeArc},${sweep} ${x2},${y2}`;
+  }
+
   let midx = (d.source.x + d.target.x) / 2;
   let midy = (d.source.y + d.target.y) / 2;
   let dx = (d.target.x - d.source.x);
@@ -187,39 +188,13 @@ function nodePos(d) {
   return `translate(${d.x},${d.y})`;
 }
 
-function ticked() {
-  //   // Self edge.
-  //   if (x1 === x2 && y1 === y2) {
-  //     xRotation = -45;
-  //     largeArc = 1;
-  //     sweep = 0;
-
-  //     // Make drx and dry different to get an ellipse
-  //     // instead of a circle.
-  //     drx = 25;
-  //     dry = 30;
-
-  //     // For whatever reason the arc collapses to a point if the beginning
-  //     // and ending points of the arc are the same, so kludge it.
-  //     x2 = x2 + 1;
-  //     y2 = y2 + 1;
-  //   }
-
-  //   return `M${x1},${y1}` +
-  //     `A${drx},${dry} ${xRotation},${largeArc},${sweep} ${x2},${y2}`
-  // });
-
-  link.attr("d", linkPos);
-  nodes
-    .attr("cx", function(d) { return d.x; })
-    .attr("cy", function(d) { return d.y; });
-}
-
-function dragStart(event, d) {
-  console.log(d.id);
-  if (!event.active) simulation.alphaTarget(0.3).restart();
-  d.fx = d.x;
-  d.fy = d.y;
+function dragStartFunc(simulation){
+  return (event, d) => {
+    console.log(d.id);
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+  };
 }
 
 function dragNode(event, d) {
@@ -231,8 +206,14 @@ function dragNode(event, d) {
   }
 }
 
-function dragEnd(event, d) {
-  if (!event.active) simulation.alphaTarget(0);
-  d.fx = null;
-  d.fy = null;
+function dragEndFunc(simulation) {
+  return (event, d) => {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+  };
 }
+
+
+// ------------------------------------------------------
+runGame(graph1);
