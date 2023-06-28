@@ -1,60 +1,27 @@
-// import { level1 } from "./levels.js"
 import { bfs, chopEdge } from "./graph.js"
 
-var svg = d3.select("svg"),
+const svg = d3.select("svg"),
     width = +svg.attr("width"),
     height = +svg.attr("height");
 
-const floor = 5 * height / 6;
-const rootPosX = (2 * width) / 3;
+const defaultLength = 80;
+const floor = 6 * height / 7;
 
-const graph1 = {
-  "nodes": [
-    {"id": 0, "fx": (width / 3), "fy": floor, "isRoot": true},
-    {"id": 1},
-    {"id": 2},
-    {"id": 3},
-    // 2nd component
-    {"id": 4, "fx": rootPosX, "fy": floor, "isRoot": true},
-    {"id": 5, "x": rootPosX, "y" : floor - 30},
-    {"id": 6, "x": rootPosX, "y" : floor - 30},
-    {"id": 7, "x": rootPosX, "y" : floor - 30},
-    {"id": 8, "x": rootPosX, "y" : floor - 30},
-    {"id": 9}
-  ],
-  "links": [
-    {"id": 0, "source": 0, "target": 1},
-    {"id": 1, "source": 1, "target": 2},
-    {"id": 2, "source": 1, "target": 3},
-    {"id": 3, "source": 4, "target": 5, "length": 200},
-    {"id": 4, "source": 5, "target": 6},
-    {"id": 5, "source": 5, "target": 7},
-    {"id": 6, "source": 5, "target": 8},
-    {"id": 7, "source": 6, "target": 9},
-    {"id": 8, "source": 9, "target": 5},
-    {"id": 9, "source": 2, "target": 1},
-    {"id": 10, "source": 1, "target": 9},
-    {"id": 11, "source": 3, "target": 3},
-    //{"source": 5, "target": 5}
-  ]
-}
+function positionGraph(G){
+  let roots = G.nodes.filter((n) => n.isRoot);
+  let n = roots.length;
+  console.log(roots);
 
-
-function runGame(G){
-  const rootIds = G.nodes.filter((e) => e.isRoot)
-                   .map((e) => e.id);
-  G.roots = rootIds;
-  let turn = 0;
-  let stateDiffs = [];
-
-  let nextState = (diff) => {
-    turn += 1;
-    stateDiffs.push(diff);
-    G.links = G.links.filter((e) => !diff.linkIds.includes(e.id));
-    G.nodes= G.nodes.filter((n) => !diff.linkIds.includes(n.id));
+  for (let i=0; i<n; i++){
+    roots[i].fx = (i+1) * width / (n+1);
+    roots[i].fy = floor;
   }
-  runForceSim(G, nextState);
+  // G.nodes.filter(n => !n.isRoot).forEach((n) => {
+  //   n.x = width/2 + (Math.random() - 0.5)*200;
+  //   n.y = height/2;
+  // })
 }
+
 
 // runForceSim sets up d3 force-graph given graph
 function runForceSim(G, updateFunc){
@@ -72,26 +39,33 @@ function runForceSim(G, updateFunc){
               .selectAll("circle")
               .data(G.nodes)
               .enter().append("circle")
-              .attr("r", 10)
+              .attr("r", 10);
 
   const simulation = d3.forceSimulation(G.nodes)
                     .force("link",
                             d3.forceLink(G.links)
-                              .strength(0.3)
+                              .strength(0.2)
                               .distance(function (d) {
-                                return d.hasOwnProperty("length") ? d.length : 80
+                                return d.hasOwnProperty("length") ? d.length : defaultLength;
                               })
                               .id(function(d) { return d.id; }))
                     .force("charge", d3.forceManyBody()
-                                        .distanceMax(100))
-                    .force("collide", d3.forceCollide(30))
+                                       .strength(0.4)
+                                       .distanceMax(150))
+                    .force("collide", d3.forceCollide(20))
                     .on("tick", ticked);
 
-  let unrootedNodes = nodes.filter(function(d) { return !d.isRoot });
-  unrootedNodes.call(d3.drag()
-                      .on("start", dragStartFunc(simulation))
-                      .on("drag", dragNode)
-                      .on("end", dragEndFunc(simulation)));
+  nodes.filter((d) => !d.isRoot)
+       .call(d3.drag()
+               .on("start", dragStartFunc(simulation))
+               .on("drag", dragNode)
+               .on("end", dragEndFunc(simulation)));
+
+  nodes.filter((d) => d.isRoot)
+       .style("fill","brown")
+
+  nodes.filter((d) => d.isRoot)
+       .attr("class", "root")
 
   function ticked() {
     link.attr("d", linkPos);
@@ -99,11 +73,8 @@ function runForceSim(G, updateFunc){
       .attr("cx", function(d) { return d.x; })
       .attr("cy", function(d) { return d.y; });
   }
+  return simulation;
 }
-
-// -----------------------------------------------------------------------------
-
-
 
 // -----------------------------------------------------------------------------
 // Event listeners
@@ -216,4 +187,56 @@ function dragEndFunc(simulation) {
 
 
 // ------------------------------------------------------
-runGame(graph1);
+// main
+
+function isGameOver(G){
+  return G.nodes.filter((e) => !e.isRoot).length == 0;
+}
+
+function gameOverScreen(turn){
+  document.getElementById("popup").style.display = "block";
+}
+
+function runGame(G){
+  console.log(G)
+  positionGraph(G);
+  G.roots = G.nodes
+             .filter((e) => e.isRoot)
+             .map((e) => e.id);
+
+  let turn = 0;
+  let stateDiffs = [];
+
+  let nextState = (diff) => {
+    turn += 1;
+    stateDiffs.push(diff);
+    G.links = G.links.filter((e) => !diff.linkIds.includes(e.id));
+    G.nodes= G.nodes.filter((n) => !diff.nodeIds.includes(n.id));
+    if (isGameOver(G)){
+      gameOverScreen(turn);
+    } else {
+      console.log(G);
+    }
+  }
+  let sim = runForceSim(G, nextState);
+}
+
+// restart button
+const resetBtn = document.getElementById("restart");
+resetBtn.onclick = function (e) {
+  svg.selectAll("*").remove();
+  main()
+};
+
+function selectLevel(){
+  return;
+}
+
+function main(){
+  let level = selectLevel()
+  fetch("./static/graph1.json")
+    .then(r => r.json())
+    .then(G => runGame(G))
+}
+
+main()
